@@ -1,17 +1,26 @@
-// Weatherbit API key
-const apiKey = '86a4f707a6c34956b0b4831843f1676a';
-
-// Function to fetch weather data from Weatherbit API
+// Function to fetch weather data from OpenWeatherMap API
 async function fetchData() {
-  // Fetch hourly forecast data from Weatherbit API
-  const response = await fetch(`https://api.weatherbit.io/v2.0/forecast/hourly?lat=33.51&lon=36.27&key=${apiKey}`);
+  const apiKey = 'bc06d6bc2a42351e5ea6bc88757e8639'; // Replace with your API key
+  const city = 'Damascus';
+  const response = await fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}`);
   const data = await response.json();
-  return data.data;
+
+  // Extract relevant data from the response and convert temperature to Celsius
+  const hourlyData = data.list.map(entry => ({
+    timestamp_local: new Date(entry.dt * 1000).toLocaleString(), // Convert timestamp to local time
+    temp: entry.main.temp - 273.15, // Convert Kelvin to Celsius
+  }));
+
+  return hourlyData;
 }
+
 
 // Function to create a line chart using D3.js
 async function createChart() {
   const data = await fetchData();
+
+  // Filter out invalid data points
+  const validData = data.filter(entry => !isNaN(entry.temp) && !isNaN(new Date(entry.timestamp_local)));
 
   // Set up SVG container and dimensions
   const margin = { top: 20, right: 30, bottom: 50, left: 50 };
@@ -28,9 +37,9 @@ async function createChart() {
     .append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // Extract timestamps and temperatures from the data
-  const times = data.map(entry => entry.timestamp_local);
-  const temperatures = data.map(entry => entry.temp);
+  // Extract timestamps and temperatures from the valid data
+  const times = validData.map(entry => entry.timestamp_local);
+  const temperatures = validData.map(entry => entry.temp);
 
   // Set up scales for x and y axes
   const x = d3.scaleTime()
@@ -41,21 +50,24 @@ async function createChart() {
     .domain([d3.min(temperatures) - 1, d3.max(temperatures) + 1])
     .range([height, 0]);
 
-    // Define a line function for the chart
+  // Define a line function for the chart with step interpolation
   const line = d3.line()
     .x(d => x(new Date(d.timestamp_local)))
-    .y(d => y(d.temp));
+    .y(d => y(d.temp))
+    .curve(d3.curveStepBefore); // Use step-before interpolation
 
-  // Draw the line chart
+  // Draw the step chart with thicker lines
   svg.append('path')
-    .data([data])
+    .data([validData])
     .attr('class', 'line')
     .attr('d', line)
-    .style('stroke', '#3498db'); // Line color
+    .style('stroke', '#3498db') // Line color
+    .style('fill', 'none') // Disable area fill
+    .style('stroke-width', 2); // Increase line thickness
 
   // Draw data points as circles
   svg.selectAll('.dot')
-    .data(data)
+    .data(validData)
     .enter().append('circle')
     .attr('class', 'dot')
     .attr('cx', d => x(new Date(d.timestamp_local)))
@@ -74,15 +86,20 @@ async function createChart() {
   svg.append('g')
     .call(d3.axisLeft(y));
 
-  // Add gridlines
-  svg.append('g')
-    .attr('class', 'grid')
-    .attr('transform', `translate(0,${height})`)
-    .call(d3.axisBottom(x).ticks(d3.timeHour.every(6)).tickSize(-height).tickFormat(''));
+  // Add gridlines with slightly darker color
+svg.append('g')
+.attr('class', 'grid')
+.attr('transform', `translate(0,${height})`)
+.call(d3.axisBottom(x).ticks(d3.timeHour.every(6)).tickSize(-height).tickFormat(''))
+.selectAll('line')
+.style('stroke', '#bbb');
 
-  svg.append('g')
-    .attr('class', 'grid')
-    .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+svg.append('g')
+.attr('class', 'grid')
+.call(d3.axisLeft(y).tickSize(-width).tickFormat(''))
+.selectAll('line')
+.style('stroke', '#bbb');
+
 
   // Add labels
   svg.append('text')
@@ -99,5 +116,8 @@ async function createChart() {
     .text('Temperature (°C)');
 }
 
+
+
 // Initialize the chart
 createChart();
+
